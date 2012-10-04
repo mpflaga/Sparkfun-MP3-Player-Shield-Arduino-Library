@@ -73,6 +73,22 @@ uint8_t SFEMP3Shield::begin(){
   Serial.println(MP3Clock, HEX);
   */
   
+
+//  Serial.print("para_chipID_0 = 0x");
+//  Serial.println(Mp3ReadWRAM(para_chipID_0), HEX);
+//
+//  Serial.print("para_chipID_1 = 0x");
+//  Serial.println(Mp3ReadWRAM(para_chipID_1), HEX);
+//
+//  Serial.print("para_version = 0x");
+//  Serial.println(Mp3ReadWRAM(para_version), HEX);
+//
+//  Serial.print("para_endFillByte = 0x");
+//  Serial.println(Mp3ReadWRAM(para_endFillByte), HEX);
+//
+//  Serial.print("chip version = 0x");
+//  Serial.println(((Mp3ReadRegister(SCI_STATUS) & 0xF0) >> 4), HEX);
+  
   if(MP3Mode != (SM_LINE1 | SM_SDINEW)) return 4;
   
   
@@ -204,12 +220,12 @@ void SFEMP3Shield::stopTrack(){
 	detachInterrupt(MP3_DREQINT);
 	playing=FALSE;
 
-	//tell MP3 chip to do a soft reset. Fixes garbles at end, and clears its buffer. 
-	//easier then the way your SUPPOSE to do it by the manual, same result as much as I can tell.
-	Mp3WriteRegister(SCI_MODE, SM_LINE1 | SM_SDINEW | SM_RESET);
-	  
 	track.close(); //Close out this track
-	
+
+	if (flush_cancel()) {
+		Mp3WriteRegister(SCI_MODE, SM_LINE1 | SM_SDINEW | SM_RESET);
+	}
+	return;	
 	  
 	//Serial.println("Track is done!");
   
@@ -411,40 +427,87 @@ unsigned int Mp3ReadRegister (unsigned char addressbyte){
 	}
 }
 
+//Read the 16-bit value of a VS10xx WRAM location
+uint16_t Mp3ReadWRAM (uint16_t addressbyte){
+
+	unsigned short int tmp1,tmp2;
+
+	Mp3WriteRegister(SCI_WRAMADDR, addressbyte);
+	tmp1 = Mp3ReadRegister(SCI_WRAM);
+
+	Mp3WriteRegister(SCI_WRAMADDR, addressbyte);
+	tmp2 = Mp3ReadRegister(SCI_WRAM);
+
+	if (tmp1==tmp2) return tmp1;
+	Mp3WriteRegister(SCI_WRAMADDR, addressbyte);
+	tmp2 = Mp3ReadRegister(SCI_WRAM);
+
+	if (tmp1==tmp2) return tmp1;
+	Mp3WriteRegister(SCI_WRAMADDR, addressbyte);
+	tmp2 = Mp3ReadRegister(SCI_WRAM);
+
+	if (tmp1==tmp2) return tmp1;
+	return tmp1;
+}
+
 //refill VS10xx buffer with new data
 static void refill() {
-  
-  
-  //Serial.println("filling");
-  
-  while(digitalRead(MP3_DREQ)){
 
-        if(!track.read(mp3DataBuffer, sizeof(mp3DataBuffer))) { //Go out to SD card and try reading 32 new bytes of the song
+	while(digitalRead(MP3_DREQ)){
+
+		if(!track.read(mp3DataBuffer, sizeof(mp3DataBuffer))) { //Go out to SD card and try reading 32 new bytes of the song
 			track.close(); //Close out this track
 			playing=FALSE;
-			
+
 			//cancel external interrupt
 			detachInterrupt(MP3_DREQINT);
-			
-			//tell MP3 chip to do a soft reset. Fixes garbles at end, and clears its buffer. 
-			//easier then the way your SUPPOSE to do it by the manual, same result as much as I can tell.
-			Mp3WriteRegister(SCI_MODE, SM_LINE1 | SM_SDINEW | SM_RESET);
 
-           //Oh no! There is no data left to read!
-          //Time to exit
-          break;
-        }
-      
-   
-      //Once DREQ is released (high) we now feed 32 bytes of data to the VS1053 from our SD read buffer
-      digitalWrite(MP3_XDCS, LOW); //Select Data
-      for(int y = 0 ; y < sizeof(mp3DataBuffer) ; y++) {
-        SPI.transfer(mp3DataBuffer[y]); // Send SPI byte
-      }
-  
-      digitalWrite(MP3_XDCS, HIGH); //Deselect Data
-       //We've just dumped 32 bytes into VS1053 so our SD read buffer is empty. go get more data
-  }
+			if (flush_cancel()) {
+				Mp3WriteRegister(SCI_MODE, SM_LINE1 | SM_SDINEW | SM_RESET);
+			}
+			return;
+		}
+
+
+		//Once DREQ is released (high) we now feed 32 bytes of data to the VS1053 from our SD read buffer
+		digitalWrite(MP3_XDCS, LOW); //Select Data
+		for(int y = 0 ; y < sizeof(mp3DataBuffer) ; y++) {
+//			while(!digitalRead(MP3_DREQ)); // wait until DREQ is or goes high // turns out it is not needed.
+			SPI.transfer(mp3DataBuffer[y]); // Send SPI byte
+		}
+
+		digitalWrite(MP3_XDCS, HIGH); //Deselect Data
+		//We've just dumped 32 bytes into VS1053 so our SD read buffer is empty. go get more data
+	}
+}
+
+uint8_t	flush_cancel() {
+	int8_t endFillByte = (int8_t) (Mp3ReadWRAM(para_endFillByte) & 0xFF);
+	
+	digitalWrite(MP3_XDCS, LOW); //Select Data
+	for(int y = 0 ; y < 2052 ; y++) {
+		while(!digitalRead(MP3_DREQ)); // wait until DREQ is or goes high
+		SPI.transfer(endFillByte); // Send SPI byte
+	}
+	digitalWrite(MP3_XDCS, HIGH); //Deselect Data
+
+	for (int n = 0; n < 64 ; n++)
+	{
+		Mp3WriteRegister(SCI_MODE, SM_LINE1 | SM_SDINEW | SM_CANCEL);
+		digitalWrite(MP3_XDCS, LOW); //Select Data
+		for(int y = 0 ; y < 32 ; y++) {
+			while(!digitalRead(MP3_DREQ)); // wait until DREQ is or goes high
+			SPI.transfer(endFillByte); // Send SPI byte
+		}
+		digitalWrite(MP3_XDCS, HIGH); //Deselect Data
+		
+		int cancel = Mp3ReadRegister(SCI_MODE) & SM_CANCEL;
+		if (cancel == 0) {
+			// Cancel has succeeded.
+			return 0;
+		}
+	}	
+	return 1; // Cancel has not succeeded.
 }
 
 // chomp non printable characters out of string.
