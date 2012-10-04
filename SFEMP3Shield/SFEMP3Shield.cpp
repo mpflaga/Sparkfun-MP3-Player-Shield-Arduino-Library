@@ -222,7 +222,7 @@ void SFEMP3Shield::stopTrack(){
 
 	track.close(); //Close out this track
 
-	if (flush_cancel()) {
+	if (flush_cancel(0)) { // cancel then flush the buffer
 		Mp3WriteRegister(SCI_MODE, SM_LINE1 | SM_SDINEW | SM_RESET);
 	}
 	return;	
@@ -462,7 +462,7 @@ static void refill() {
 			//cancel external interrupt
 			detachInterrupt(MP3_DREQINT);
 
-			if (flush_cancel()) {
+			if (flush_cancel(1)) {  // flush buffer then cancel.
 				Mp3WriteRegister(SCI_MODE, SM_LINE1 | SM_SDINEW | SM_RESET);
 			}
 			return;
@@ -481,15 +481,18 @@ static void refill() {
 	}
 }
 
-uint8_t	flush_cancel() {
+//flush the buffer and cancel
+uint8_t	flush_cancel(uint8_t flush_first) {
 	int8_t endFillByte = (int8_t) (Mp3ReadWRAM(para_endFillByte) & 0xFF);
 	
-	digitalWrite(MP3_XDCS, LOW); //Select Data
-	for(int y = 0 ; y < 2052 ; y++) {
-		while(!digitalRead(MP3_DREQ)); // wait until DREQ is or goes high
-		SPI.transfer(endFillByte); // Send SPI byte
+	if (flush_first) {
+		digitalWrite(MP3_XDCS, LOW); //Select Data
+		for(int y = 0 ; y < 2052 ; y++) {
+			while(!digitalRead(MP3_DREQ)); // wait until DREQ is or goes high
+			SPI.transfer(endFillByte); // Send SPI byte
+		}
+		digitalWrite(MP3_XDCS, HIGH); //Deselect Data
 	}
-	digitalWrite(MP3_XDCS, HIGH); //Deselect Data
 
 	for (int n = 0; n < 64 ; n++)
 	{
@@ -504,6 +507,14 @@ uint8_t	flush_cancel() {
 		int cancel = Mp3ReadRegister(SCI_MODE) & SM_CANCEL;
 		if (cancel == 0) {
 			// Cancel has succeeded.
+			if (!flush_first) {
+				digitalWrite(MP3_XDCS, LOW); //Select Data
+				for(int y = 0 ; y < 2052 ; y++) {
+					while(!digitalRead(MP3_DREQ)); // wait until DREQ is or goes high
+					SPI.transfer(endFillByte); // Send SPI byte
+				}
+				digitalWrite(MP3_XDCS, HIGH); //Deselect Data
+			}
 			return 0;
 		}
 	}	

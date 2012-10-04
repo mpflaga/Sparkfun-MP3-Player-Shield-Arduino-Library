@@ -43,7 +43,7 @@ GNU General Public License for more details.
 
 
 static void refill();
-uint8_t	flush_cancel();
+uint8_t	flush_cancel(uint8_t);
 
 void Mp3WriteRegister(uint8_t, uint8_t, uint8_t);
 void Mp3WriteRegister(uint8_t, uint16_t);
