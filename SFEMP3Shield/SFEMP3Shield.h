@@ -40,26 +40,6 @@ GNU General Public License for more details.
 #include <SdFat.h>
 #include <SdFatUtil.h> 
 
-
-
-static void refill();
-uint8_t	flush_cancel(uint8_t);
-
-void Mp3WriteRegister(uint8_t, uint8_t, uint8_t);
-void Mp3WriteRegister(uint8_t, uint16_t);
-uint16_t Mp3ReadRegister (uint8_t);
-uint16_t Mp3ReadWRAM (uint16_t);
-
-//Create the variables to be used by SdFat Library
-extern Sd2Card card;
-extern SdVolume volume;
-extern SdFile root;
-extern SdFile track;
-extern uint8_t playing;
-
-//buffer for music
-extern uint8_t mp3DataBuffer[32];
-
 //MP3 Player Shield pin mapping. See the schematic
 #define MP3_XCS 6 //Control Chip Select Pin (for accessing SPI Control/Status registers)
 #define MP3_XDCS 7 //Data Chip Select / BSYNC Pin
@@ -144,7 +124,26 @@ void pauseDataStream();
 void resumeDataStream();
 
 private:
+static void refill();
+static uint8_t	flush_cancel(uint8_t);
+
+static void Mp3WriteRegister(uint8_t, uint8_t, uint8_t);
+static void Mp3WriteRegister(uint8_t, uint16_t);
+static uint16_t Mp3ReadRegister (uint8_t);
+static uint16_t Mp3ReadWRAM (uint16_t);
+
 void getTrackInfo(uint8_t, char*);
+
+//Create the variables to be used by SdFat Library
+static Sd2Card card;
+static SdVolume volume;
+static SdFile root;
+static SdFile track;
+static uint8_t playing;
+
+//buffer for music
+static uint8_t mp3DataBuffer[32];
+
 uint8_t bitrate;
 uint32_t start_of_music;
 uint8_t VolL;

@@ -21,14 +21,15 @@ PROGMEM prog_uint16_t bitrate_table[14][6] = { {0,0,0,0,0,0},
 					       {384,256,224,192,128,128}, //1100
 					       {416,320,256,224,144,144} };//1101
 
-Sd2Card card;
-SdVolume volume;
-SdFile root;
-SdFile track;
-uint8_t playing;
+// Initialize static class variables
+Sd2Card SFEMP3Shield::card;
+SdVolume SFEMP3Shield::volume;
+SdFile SFEMP3Shield::root;
+SdFile SFEMP3Shield::track;
+uint8_t SFEMP3Shield::playing;
 
 //buffer for music
-uint8_t mp3DataBuffer[32];
+uint8_t SFEMP3Shield::mp3DataBuffer[32];
 
 //Inits everything
 uint8_t SFEMP3Shield::begin(){
@@ -64,7 +65,7 @@ uint8_t SFEMP3Shield::begin(){
   delay(10);
   digitalWrite(MP3_RESET, HIGH); //Bring up VS1053
   
-  SFEMP3Shield::SetVolume(40, 40);
+  SetVolume(40, 40);
   VolL = 40;
   VolR = 40;
   
@@ -139,7 +140,7 @@ uint8_t SFEMP3Shield::playTrack(uint8_t trackNo){
 	sprintf(trackName, "track%03d.mp3", trackNo);
 	
 	//play the file
-    return (SFEMP3Shield::playMP3(trackName));
+    return playMP3(trackName);
 }
 
 
@@ -214,7 +215,7 @@ uint8_t SFEMP3Shield::playMP3(char* fileName){
 	refill();
 	  
 	//attach refill interrupt off DREQ line, pin 2
-	attachInterrupt(MP3_DREQINT, refill, RISING);
+	attachInterrupt(MP3_DREQINT, SFEMP3Shield::refill, RISING);
 	  
 	return 0;
 }
@@ -305,7 +306,7 @@ void SFEMP3Shield::resumeDataStream(){
 		refill();
 
 		//attach refill interrupt off DREQ line, pin 2
-		attachInterrupt(MP3_DREQINT, refill, RISING);
+		attachInterrupt(MP3_DREQINT, SFEMP3Shield::refill, RISING);
 	}
 
 }
@@ -340,10 +341,10 @@ bool SFEMP3Shield::skipTo(uint32_t timecode){
 		delay(50);
 		
 		//one of these days I'll come back and try to do it the right way.
-		SFEMP3Shield::SetVolume(VolL,VolR);
+		SetVolume(VolL,VolR);
 		  
 		//attach refill interrupt off DREQ line, pin 2
-		attachInterrupt(MP3_DREQINT, refill, RISING);
+		attachInterrupt(MP3_DREQINT, SFEMP3Shield::refill, RISING);
 		playing=TRUE;
 		
 		return 0;
@@ -365,13 +366,13 @@ void SFEMP3Shield::setBitRate(uint16_t bitr){
 	return;
 }
 
-void Mp3WriteRegister(uint8_t addressbyte, uint16_t data) {
+void SFEMP3Shield::Mp3WriteRegister(uint8_t addressbyte, uint16_t data) {
 	union twobyte val;
 	val.word = data;
 	Mp3WriteRegister(addressbyte, val.byte[1], val.byte[0]);
 }
 
-void Mp3WriteRegister(uint8_t addressbyte, uint8_t highbyte, uint8_t lowbyte) {
+void SFEMP3Shield::Mp3WriteRegister(uint8_t addressbyte, uint8_t highbyte, uint8_t lowbyte) {
 
 	//cancel interrupt if playing
 	if(playing)
@@ -396,13 +397,13 @@ void Mp3WriteRegister(uint8_t addressbyte, uint8_t highbyte, uint8_t lowbyte) {
 		refill();
 
 		//attach refill interrupt off DREQ line, pin 2
-		attachInterrupt(MP3_DREQINT, refill, RISING);
+		attachInterrupt(MP3_DREQINT, SFEMP3Shield::refill, RISING);
 	}
 	
 }
 
 //Read the 16-bit value of a VS10xx register
-unsigned int Mp3ReadRegister (unsigned char addressbyte){
+unsigned int SFEMP3Shield::Mp3ReadRegister (unsigned char addressbyte){
   
 	//cancel interrupt if playing
 	if(playing)
@@ -432,12 +433,12 @@ unsigned int Mp3ReadRegister (unsigned char addressbyte){
 		refill();
 
 		//attach refill interrupt off DREQ line, pin 2
-		attachInterrupt(MP3_DREQINT, refill, RISING);
+		attachInterrupt(MP3_DREQINT, SFEMP3Shield::refill, RISING);
 	}
 }
 
 //Read the 16-bit value of a VS10xx WRAM location
-uint16_t Mp3ReadWRAM (uint16_t addressbyte){
+uint16_t SFEMP3Shield::Mp3ReadWRAM (uint16_t addressbyte){
 
 	unsigned short int tmp1,tmp2;
 
@@ -460,7 +461,7 @@ uint16_t Mp3ReadWRAM (uint16_t addressbyte){
 }
 
 //refill VS10xx buffer with new data
-static void refill() {
+void SFEMP3Shield::refill() {
 
 	while(digitalRead(MP3_DREQ)){
 
@@ -491,7 +492,7 @@ static void refill() {
 }
 
 //flush the buffer and cancel
-uint8_t	flush_cancel(uint8_t flush_first) {
+uint8_t	SFEMP3Shield::flush_cancel(uint8_t flush_first) {
 	int8_t endFillByte = (int8_t) (Mp3ReadWRAM(para_endFillByte) & 0xFF);
 	
 	if (flush_first) {
