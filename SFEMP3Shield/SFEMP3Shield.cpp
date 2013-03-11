@@ -59,6 +59,14 @@ state_m  SFEMP3Shield::playing_state;
  */
 uint16_t SFEMP3Shield::spiRate;
 
+/**
+ * \brief Initializar for default bass and treble settings.
+ */
+int SFEMP3Shield::_sb_amplitude = DEFAULT_BASS_AMPLITUDE;
+int SFEMP3Shield::_sb_freqlimit = DEFAULT_BASS_FREQUENCY;
+int SFEMP3Shield::_st_amplitude = DEFAULT_TREBLE_AMPLITUDE;
+int SFEMP3Shield::_st_freqlimit = DEFAULT_TREBLE_FREQUENCY;
+
 // only needed for specific means of refilling
 #if defined(USE_MP3_REFILL_MEANS) && USE_MP3_REFILL_MEANS == USE_MP3_SimpleTimer
   SimpleTimer timer;
@@ -175,9 +183,9 @@ uint8_t SFEMP3Shield::vs_init() {
   //Initialize VS1053 chip
 
   //Reset if not already
-  delay(100); // keep clear of anything prior
+  delay(10); // keep clear of anything prior
   digitalWrite(MP3_RESET, LOW); //Shut down VS1053
-  delay(100);
+  delay(10);
 
   //Bring out of reset
   digitalWrite(MP3_RESET, HIGH); //Bring up VS1053
@@ -234,7 +242,7 @@ uint8_t SFEMP3Shield::vs_init() {
 
   if(VSLoadUserCode("patches.053")) return 6;
 
-  delay(100); // just a good idea to let settle.
+  delay(10); // just a good idea to let settle.
 
   return 0; // indicating all was good.
 }
@@ -543,8 +551,100 @@ uint16_t SFEMP3Shield::getVolume() {
   uint16_t MP3SCI_VOL = Mp3ReadRegister(SCI_VOL);
   return MP3SCI_VOL;
 }
-// @}
-// Volume_Group
+int SFEMP3Shield::getTrebleFrequency(void)
+{
+    return _st_freqlimit * 1000;
+}
+int SFEMP3Shield::getTrebleAmplitude(void)
+{
+    //return (_st_amplitude*15)/10;
+	return _st_amplitude;
+}
+
+int SFEMP3Shield::getBassFrequency(void)
+{
+    return _sb_freqlimit * 10;
+}
+
+int SFEMP3Shield::getBassAmplitude(void)
+{
+    return _sb_amplitude;
+}
+
+void SFEMP3Shield::setTrebleFrequency(int frequency)
+{
+    frequency /= 1000;
+    
+    if(frequency < 1)
+    {
+        frequency = 1;
+    }
+    else if(frequency > 15)
+    {
+        frequency = 15;
+    }
+	_st_freqlimit = frequency;
+    changeBass();
+}
+    
+
+void SFEMP3Shield::setTrebleAmplitude(int amplitude)
+{
+    //amplitude = (amplitude * 10)/15;
+    if(amplitude < -8)
+    {
+        amplitude = -8;
+    }
+    else if(amplitude > 7)
+    {
+        amplitude = 7;
+    }
+	_st_amplitude = amplitude;
+    changeBass();
+}   
+
+void SFEMP3Shield::setBassFrequency(int frequency)
+{
+    frequency /= 10;
+    
+    if(frequency < 2)
+    {
+        frequency = 2;
+    }
+    else if(frequency > 15)
+    {
+        frequency = 15;
+    }
+	_sb_freqlimit = frequency;
+    changeBass();
+}  
+
+void SFEMP3Shield::setBassAmplitude(int amplitude)
+{
+    if(amplitude < 0)
+    {
+        amplitude = 0;
+    }
+    else if(amplitude > 15)
+    {
+        amplitude = 15;
+    }
+	_sb_amplitude = amplitude;
+    changeBass();
+}
+
+void SFEMP3Shield::changeBass(void)
+{
+    unsigned short bassCalced = ((_st_amplitude  & 0x0f) << 12) 
+                              | ((_st_freqlimit  & 0x0f) <<  8) 
+                              | ((_sb_amplitude  & 0x0f) <<  4) 
+                              | ((_sb_freqlimit  & 0x0f) <<  0);
+                            
+    Mp3WriteRegister(SCI_BASS, bassCalced);
+	//Serial.print("BassTreble: ");
+	//Serial.println(bassCalced,HEX);
+   
+}
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // @{

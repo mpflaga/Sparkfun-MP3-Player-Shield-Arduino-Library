@@ -657,6 +657,24 @@ extern SdFat sd;
  *  /@}
  */
 
+
+
+//------------------------------------------------------------------------------
+/** \name BassTreble_Group
+ *  Bass and Treble group.
+ *  /@{
+ */
+/**
+ * \brief Default values according with the datasheet.
+ */
+#define DEFAULT_BASS_AMPLITUDE                        0        //   0 -    15 dB
+#define DEFAULT_BASS_FREQUENCY                       10        //  20 -   150 Hz
+#define DEFAULT_TREBLE_AMPLITUDE                      -2        //  -8 -     7 dB
+#define DEFAULT_TREBLE_FREQUENCY                      5        //1000 - 15000 Hz
+/** End BassTreble_Group
+ *  /@}
+ */
+
 //------------------------------------------------------------------------------
 /**
  * \class SFEMP3Shield
@@ -669,6 +687,15 @@ class SFEMP3Shield {
     uint8_t vs_init();
     void setVolume(uint8_t, uint8_t);
     void setVolume(uint16_t);
+	int getTrebleFrequency(void);
+	int getTrebleAmplitude(void);
+	int getBassFrequency(void);
+	int getBassAmplitude(void);
+	void setTrebleFrequency(int frequency);
+	void setTrebleAmplitude(int amplitude);
+	void setBassFrequency(int frequency);
+	void setBassAmplitude(int amplitude);
+	void changeBass(void);
     void setPlaySpeed(uint16_t);
     uint16_t getPlaySpeed();
     uint16_t getVolume();
@@ -747,6 +774,11 @@ class SFEMP3Shield {
 
 /** \brief contains a local value of the VSdsp's master volume Right channels*/
     uint8_t VolR;
+
+    static int _sb_amplitude;// DEFAULT_BASS_AMPLITUDE;
+    static int _sb_freqlimit;// DEFAULT_BASS_FREQUENCY;
+    static int _st_amplitude;// DEFAULT_TREBLE_AMPLITUDE;
+    static int _st_freqlimit;// DEFAULT_TREBLE_FREQUENCY;
 };
 
 //------------------------------------------------------------------------------

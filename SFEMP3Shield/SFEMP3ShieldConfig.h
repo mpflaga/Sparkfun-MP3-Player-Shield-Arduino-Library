@@ -169,6 +169,24 @@ Support for Arduino Leonardo is afflicted by having the SPI pins not routing the
   #endif // GRAVITECH
 #endif // none SEEEDUINO
 
+
+// If using a TEENSY 2.0++ board:
+#if defined(__AVR_AT90USB1286__)
+  // Removing previous definition.
+  #undef MP3_XCS
+  #undef MP3_XDCS
+  #undef MP3_DREQ
+  #undef MP3_DREQINT
+  #undef MP3_RESET
+  #undef SD_SEL
+  #define MP3_XCS              10 //Control Chip Select Pin (for accessing SPI Control/Status registers)
+  #define MP3_XDCS             11 //Data Chip Select / BSYNC Pin
+  #define MP3_DREQ             0 //Data Request Pin: Player asks for more data
+  #define MP3_DREQINT          0 //Corresponding INTx for DREQ pin
+  #define MP3_RESET            12 //Reset is active low
+  #define SD_SEL               20 //select pin for SD card
+#endif
+
 //------------------------------------------------------------------------------
 /**
  * \def USE_MP3_REFILL_MEANS
