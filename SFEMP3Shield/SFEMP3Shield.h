@@ -658,6 +658,9 @@ extern SdFat sd;
  */
 
 
+/* Recording definitions */
+#define VS1053_INT_ENABLE 0xC01A
+
 
 //------------------------------------------------------------------------------
 /** \name BassTreble_Group
@@ -732,8 +735,14 @@ class SFEMP3Shield {
     int8_t getVUmeter();
     int8_t setVUmeter(int8_t);
     int16_t getVUlevel();
+	uint8_t startRecordOgg(char* fileName);
+	uint16_t doRecordOgg(void);
+	void stopRecording(void);
+	uint8_t isRecording(void);
 
   private:
+	uint8_t StopRecFlag;
+	uint8_t RecordingFlag;
     static SdFile track;
     static void refill();
     static void flush_cancel(flush_m);

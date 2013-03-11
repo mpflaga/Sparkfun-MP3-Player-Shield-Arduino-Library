@@ -118,8 +118,10 @@ if (int8_t(sd.vol()->fatType()) == 0) {
   cs_high();  //MP3_XCS, Init Control Select to deselected
   dcs_high(); //MP3_XDCS, Init Data Select to deselected
   digitalWrite(MP3_RESET, LOW); //Put VS1053 into hardware reset
-
+  
   playing_state = initialized;
+
+  RecordingFlag = 0;
 
   uint8_t result = vs_init();
   if(result) {
@@ -245,6 +247,231 @@ uint8_t SFEMP3Shield::vs_init() {
   delay(10); // just a good idea to let settle.
 
   return 0; // indicating all was good.
+}
+
+ /**
+ * \brief Initialize the VS10xx for recording.
+ *
+ * Reset and initialize the VS10xx chip's internal registers such as clock
+ * for recording operation with the SFEMP3Shield class's members.
+ * Upload recording profile file and start the plugin. 
+ * Method writen by Miguel Moreto based on VS1053b Ogg Vorbis Encoder
+ * application manual.
+ *
+ * \param[in] fileName pointer of a char array (aka string), contianing the filename.
+ *
+ * \return Any Value other than zero indicates a problem occured.
+ * - 0 indicates that recorder is running.
+ * - error codes from VSLoadUserCode (loading plugin).
+ * - 10 error opening the track for writing.
+ *
+ * \note The user needs to constantly call doRecordOgg in order to read ogg 
+ * data and store it in track file. Using HIFI voice profile 5.
+ *
+ * \see
+ * \ref Error_Codes
+ */
+uint8_t SFEMP3Shield::startRecordOgg(char* fileName){
+
+	uint8_t temp;
+
+	// Disable DREQ interrupt during recording.
+	detachInterrupt(MP3_DREQINT);
+
+	/*  Following VS1053 operations are according to the
+		VS1053b Ogg Vorbis Encoder application manual. For
+		details read Chapter Loading and Starting the Code. */
+
+	/* Set VS1053 clock to 4.5x = 55.3 MHz */
+	Mp3WriteRegister(SCI_CLOCKF, 0xC000);
+	while(digitalRead(MP3_DREQ)==0){ // Wait for DREQ.
+	}
+
+	/* Clear SCI_BASS */
+	Mp3WriteRegister(SCI_BASS,0x0000);
+
+	/* Reset VS1053 */
+	Mp3WriteRegister(SCI_MODE,SM_SDINEW | SM_RESET);
+	while(digitalRead(MP3_DREQ)==0){
+	}
+
+	// Disable all interrupts except SCI
+	Mp3WriteRegister(SCI_WRAMADDR, VS1053_INT_ENABLE);
+	Mp3WriteRegister(SCI_WRAM, 0x2);
+	while(digitalRead(MP3_DREQ)==0){
+	}
+
+	/* Load the recorder application to VS1053
+	This source code uses .img image files for loading.
+	If you use .plg files, use the source as described
+	in the VS1053b Ogg Vorbis Encoder application manual. */
+
+	/* Higher HIFI voice profile only works with arduino CPU clock
+	at 16MHz. With 8MHz the record is corrupted due to low writing
+	SPI speed to SD card. Maybe it is a SD issue, I do not tested
+	with a micro SD class 10, only class 4.*/
+	temp = VSLoadUserCode("e44k1q05.vs");
+	if(temp){
+		// Problem loading user code
+		return temp;
+	}
+
+	Mp3WriteRegister(SCI_MODE, SM_ADPCM | SM_SDINEW);
+	Mp3WriteRegister(SCI_AICTRL1, 1024); //AGC
+	Mp3WriteRegister(SCI_AICTRL2, 0);
+	Mp3WriteRegister(SCI_AICTRL3, 0);
+
+	/* Open file for writing */
+	if(!track.open(fileName, O_WRITE | O_CREAT)){
+		// Error opening the track.
+		return 10;
+	}
+	/* Activate recording from the plugin address. In the case of the Ogg
+		Vorbis Encoder application this address is 0x34. */
+	Mp3WriteRegister(SCI_AIADDR, 0x34);
+	while(digitalRead(MP3_DREQ)==0){
+	}
+
+	/* Set RecordingFlag to enable DoRecording method */
+	RecordingFlag = 1;
+	return 0;
+}
+
+
+/*
+ * This function do the reading of OGG data from the VS1053 chip.
+ * It have to be called periodically, otherwise, data will be lost
+ * and the resulting OGG will be corrupted.
+ *
+ * Return the number of bytes written to the file or 0 if
+ * recording is done.
+ */
+/**
+ * \brief Initialize the VS10xx for recording.
+ *
+ * This function do the reading of OGG data from the VS1053 chip.
+ * It have to be called periodically, otherwise, data will be lost
+ * and the resulting OGG will be corrupted. 
+ * Method writen by Miguel Moreto based on VS1053b Ogg Vorbis Encoder
+ * application manual.
+ *
+ * \return The number of data blocks read from VS1053 and writen
+ * to the track file.
+ *
+ * \note The user needs to constantly call doRecordOgg in order to read ogg 
+ * data and store it in track file.
+ */
+uint16_t SFEMP3Shield::doRecordOgg(void){
+	static uint8_t state = 0;
+	uint16_t wordsWaiting;
+	uint16_t wordsToRead;
+	uint16_t datablockswritten = 0;
+
+	if (RecordingFlag == 1) {
+		/* Check when to end recording. The flag StopRecFlag 
+		is setted by method StopRecording() that is called by the user in 
+		order to stop recording. */
+		if (StopRecFlag && !state) {
+
+			state = 1;
+			Mp3WriteRegister(SCI_AICTRL3, 1); // Send VS1053 request to stop recording
+		}
+
+		/* See how many 16-bit words there are waiting in the VS1053 buffer */
+		wordsWaiting = Mp3ReadRegister(SCI_HDAT1);
+
+		/* If user has requested stopping recording, and VS1053 has
+		stopped recording, proceed to the next state. */
+		if (state == 1 && Mp3ReadRegister(SCI_AICTRL3) & (1<<1)) {
+			state = 2;
+			/* It is important to reread the HDAT1 register once after
+				VS1053 has stopped. Otherwise there is the chance that
+				a few more words have just arrived although we just
+				read this register. So, do NOT optimize the following
+				line away! */
+			wordsWaiting = Mp3ReadRegister(SCI_HDAT1);
+		}
+
+		/* Read and transfer whole 512-byte (256-word) disc blocks at
+			the time. The only exception is when recording ends: then
+			allow for a non-full block. */
+		// Entra aqui se wordsWaiting >= 256 caso state = 1|0
+		// ou wordsWaiting >= 1 caso state seja 2 ou 3.
+		while (wordsWaiting >= ((state < 2) ? 256 : 1)) {
+			datablockswritten++;
+			wordsToRead = min(wordsWaiting, 256);
+			wordsWaiting -= wordsToRead;
+			
+			/* If this is the very last block, read one 16-bit word less,
+			because it will be handled later separately. */
+			if (state == 2 && !wordsWaiting)
+				wordsToRead--;
+			/* Transfer one full data block, or if this is the very last
+			block, all data that's left except for the last word. */
+			{
+				uint16_t t;
+				uint16_t i;
+				for (i=0; i<wordsToRead; i++) {
+					t = Mp3ReadRegister(SCI_HDAT0);
+					track.write((uint8_t)(t >> 8));
+					track.write((uint8_t)(t & 0xFF));
+				}
+			}
+			/* If this is the last data block... */
+			if (wordsToRead < 256) {
+				uint16_t lastWord;
+				state = 3;
+
+				/* ... read the very last word of the file */
+				lastWord = Mp3ReadRegister(SCI_HDAT0);
+				/* Always write first half of the last word. */
+				track.write((uint8_t)(lastWord >> 8));
+
+				/* Read twice SCIR_AICTRL3, then check bit 2 of latter read. */
+				Mp3ReadRegister(SCI_AICTRL3);
+				if (!(Mp3ReadRegister(SCI_AICTRL3) & (1<<2))) {
+					/* Write last half of the last word only if bit 2 is clear. */
+					track.write((uint8_t)(lastWord & 0xFF));
+				}
+				datablockswritten++;
+				StopRecFlag = 0;
+				state = 0;
+				RecordingFlag = 0;
+				track.close();
+				Mp3WriteRegister(SCI_MODE, SM_SDINEW | SM_RESET);
+			} /* if (wordsToRead < 256) */
+		} /* while (wordsWaiting >= ((state < 2) ? 256 : 1)) */
+	} // End if RecordingFlag
+
+	return datablockswritten;
+}
+
+/**
+ * \brief Check if a recording is in progress
+ *
+ * This function chacks if recording is active.
+ * Method writen by Miguel Moreto based on VS1053b Ogg Vorbis Encoder
+ * application manual.
+ *
+ * \return 1 if recording is active, 0 if not.
+ *
+ */
+uint8_t SFEMP3Shield::isRecording(void){
+	return RecordingFlag;
+}
+
+/**
+ * \brief Request to stop recording.
+ *
+ * This function signals doRecordOgg to stop recording.
+ * Method writen by Miguel Moreto based on VS1053b Ogg Vorbis Encoder
+ * application manual.
+ *
+ * \note The user needs to call stopRecording in order to finish
+ * the recording and close the OGG track file. 
+ */
+void SFEMP3Shield::stopRecording(void){
+	StopRecFlag = 1;
 }
 
 //------------------------------------------------------------------------------
@@ -551,26 +778,68 @@ uint16_t SFEMP3Shield::getVolume() {
   uint16_t MP3SCI_VOL = Mp3ReadRegister(SCI_VOL);
   return MP3SCI_VOL;
 }
+
+//------------------------------------------------------------------------------
+/**
+ * \brief Get the current Treble Frequency from the VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \return int16_t of frequency in Hertz.
+ *
+ */
 int SFEMP3Shield::getTrebleFrequency(void)
 {
     return _st_freqlimit * 1000;
 }
+
+//------------------------------------------------------------------------------
+/**
+ * \brief Get the current Treble Amplitude from the VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \return int16_t of frequency amplitude (from -8 to 7).
+ *
+ */
 int SFEMP3Shield::getTrebleAmplitude(void)
 {
-    //return (_st_amplitude*15)/10;
 	return _st_amplitude;
 }
 
+//------------------------------------------------------------------------------
+/**
+ * \brief Get the current Bass Frequency from the VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \return int16_t of bass frequency in Hertz.
+ *
+ */
 int SFEMP3Shield::getBassFrequency(void)
 {
     return _sb_freqlimit * 10;
 }
 
+//------------------------------------------------------------------------------
+/**
+ * \brief Get the current Bass bost amplitude from the VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \return int16_t of bass bost amplitude in dB.
+ *
+ */
 int SFEMP3Shield::getBassAmplitude(void)
 {
     return _sb_amplitude;
 }
 
+//------------------------------------------------------------------------------
+/**
+ * \brief Set the current Treble Frequency in VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \param[in] Treble cutoff frequency in Hertz.
+ *
+ * \note The upper and lower limits of this parameter is checked.
+ */
 void SFEMP3Shield::setTrebleFrequency(int frequency)
 {
     frequency /= 1000;
@@ -587,10 +856,17 @@ void SFEMP3Shield::setTrebleFrequency(int frequency)
     changeBass();
 }
     
-
+//------------------------------------------------------------------------------
+/**
+ * \brief Set the current Treble Amplitude in VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \param[in] Treble amplitude in dB from -8 to 7.
+ *
+ * \note The upper and lower limits of this parameter is checked. 
+ */
 void SFEMP3Shield::setTrebleAmplitude(int amplitude)
 {
-    //amplitude = (amplitude * 10)/15;
     if(amplitude < -8)
     {
         amplitude = -8;
@@ -603,6 +879,15 @@ void SFEMP3Shield::setTrebleAmplitude(int amplitude)
     changeBass();
 }   
 
+//------------------------------------------------------------------------------
+/**
+ * \brief Set the current Bass Boost Frequency cutoff in VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \param[in] Bass Boost frequency cutof in Hertz (20Hz to 150Hz).
+ *
+ * \note The upper and lower limits of this parameter is checked. 
+ */
 void SFEMP3Shield::setBassFrequency(int frequency)
 {
     frequency /= 10;
@@ -619,6 +904,15 @@ void SFEMP3Shield::setBassFrequency(int frequency)
     changeBass();
 }  
 
+//------------------------------------------------------------------------------
+/**
+ * \brief Set the current Bass Boost amplitude in VS10xx chip
+ * Based on Mbed lib.
+ *
+ * \param[in] Bass Boost amplitude in dB (0dB to 15dB).
+ *
+ * \note The upper and lower limits of this parameter is checked. 
+ */
 void SFEMP3Shield::setBassAmplitude(int amplitude)
 {
     if(amplitude < 0)
@@ -633,6 +927,11 @@ void SFEMP3Shield::setBassAmplitude(int amplitude)
     changeBass();
 }
 
+//------------------------------------------------------------------------------
+/**
+ * \brief Actually writes the SCI_BASS register.
+ * Based on Mbed lib. *
+ */
 void SFEMP3Shield::changeBass(void)
 {
     unsigned short bassCalced = ((_st_amplitude  & 0x0f) << 12) 
@@ -640,10 +939,7 @@ void SFEMP3Shield::changeBass(void)
                               | ((_sb_amplitude  & 0x0f) <<  4) 
                               | ((_sb_freqlimit  & 0x0f) <<  0);
                             
-    Mp3WriteRegister(SCI_BASS, bassCalced);
-	//Serial.print("BassTreble: ");
-	//Serial.println(bassCalced,HEX);
-   
+    Mp3WriteRegister(SCI_BASS, bassCalced); 
 }
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
