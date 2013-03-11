@@ -6,8 +6,8 @@
  *
  * \author Miguel Moreto
  *
- * This sketch listens for commands from 3 pushbuttons that start recoring
- * proccess, stop recording and plays the recorded track.
+ * This sketch listens for commands from serial. The user can start recoring,
+ * stop recording and play the recorded track.
  *
  * \note This example sketch was tested with a Teensy2.0++ board and a
  * generic MP3 module with VS1053b chipset. You can configure Teensyduino
@@ -20,12 +20,7 @@
 #include <SdFat.h>
 #include <SdFatUtil.h>
 
-// Add Bounce lib to eliminate bounce in pushbutton presses.
-#include <Bounce.h>
-
 #include <SFEMP3Shield.h>
-
-#define SERIAL_DEBUG // Comment this if you don't want serial debug messages.
 
 // Pin definition:
 #define PIN_PUSH_0 5 // Pushbutton Play pin
@@ -47,20 +42,13 @@ SdFat sd;
 // Objects:
 SFEMP3Shield MP3player;
 
-Bounce PushButtonStop = Bounce(PIN_PUSH_1,10);
-Bounce PushButtonRec = Bounce(PIN_PUSH_2,10);
-Bounce PushButtonPlay = Bounce(PIN_PUSH_0,10);
-
 char trackname[] = "rec001.ogg";
 
 uint8_t ledstate = 0;
 
 void setup() {
 
-	// Input pins:
-	pinMode(PIN_PUSH_0, INPUT_PULLUP); // Play button
-	pinMode(PIN_PUSH_1, INPUT_PULLUP);
-	pinMode(PIN_PUSH_2, INPUT_PULLUP);
+	Serial.begin(115200);
   
 	// Output pins:
 	pinMode(PIN_LED_OK,OUTPUT);
@@ -80,63 +68,15 @@ void setup() {
 
 	StartMP3();
 
-#if defined(SERIAL_DEBUG)
-	Serial.println("Started...");
-#endif
-
+	help();
 }
 
 void loop()
 {
 	uint16_t result = 0;
 
-	// If rec button is pressed, start recording.
-	if (PushButtonRec.update()){
-		if (PushButtonRec.fallingEdge()){
-#if defined(SERIAL_DEBUG)
-			Serial.println("Start recording");
-#endif
-			MP3player.stopTrack(); // Stop playing if applicable.
-			digitalWrite(PIN_LED_OK, LOW); // Turn off "ready to play" Led.
-			result = MP3player.startRecordOgg(trackname); // Start recording.
-			Serial.println(result);		
-		}
-	}
-
-	// If play button is pressed, play recorded track.
-	if (PushButtonPlay.update()){
-		if (PushButtonPlay.fallingEdge()){
-#if defined(SERIAL_DEBUG)
-			Serial.println("Playing...");
-#endif			
-			digitalWrite(PIN_AMP_SHUTDOWN, HIGH); // Turn on amplifier
-			StartMP3(); // Restart MP3 in playing mode with latest patch.
-			result = MP3player.playMP3(trackname);
-			Serial.println(result);
-		}
-	}
-
-	// If stop button is pressed, stop playing track or recording.
-	if (PushButtonStop.update()){
-		if (PushButtonStop.fallingEdge()){
-			if(MP3player.isPlaying()){
-#if defined(SERIAL_DEBUG)
-				Serial.println("Stop playing");
-#endif
-				MP3player.stopTrack();
-			}
-			if (MP3player.isRecording()){
-#if defined(SERIAL_DEBUG)
-				Serial.println("Stop rec");
-#endif
-				MP3player.stopRecording(); // Command to finish recording.
-				digitalWrite(PIN_LED_REC,LOW); // Turn off red led.
-			}
-			digitalWrite(PIN_AMP_SHUTDOWN, LOW); // Turn off amplifier
-		}
-	}
-
-
+	// If recorder is active, read data blocks from VS1053b chipset and
+	// write them to track file.
 	if (MP3player.isRecording()){
 		result = MP3player.doRecordOgg();
 		if (result > 0){ // Toogle rec led when one or more datablock (512B) are written.
@@ -145,16 +85,17 @@ void loop()
 		}
 		//Serial.println(result); // Print the number of databloks written.
 	}else{
-		digitalWrite(PIN_LED_REC, LOW); // Turn on ok led
+		digitalWrite(PIN_LED_REC, LOW); // Turn off rec led
 		digitalWrite(PIN_LED_OK, HIGH); // Turn on ok led
 	}
 
-	//delay(200);
+	if(Serial.available()) {
+		parse_menu(Serial.read()); // get command from serial input
+	}
 
   /* add main program code here */
 
 }
-
 
 /*
  * MP3 Player begin function. Restart VS1053 and load the firmware update.
@@ -165,18 +106,88 @@ void StartMP3(){
 	//check result, see readme for error codes.
 	if(result != 0) {
 		digitalWrite(PIN_LED_ERROR, HIGH); // Turn on error led
-#if defined(SERIAL_DEBUG)
 		Serial.print(F("Error code: "));
 		Serial.print(result);
 		Serial.println(F(" when trying to start MP3 player"));
-#endif
 		if ( result == 6 ) {
-#if defined(SERIAL_DEBUG)
 			Serial.println(F("Warning: patch file not found, skipping.")); // can be removed for space, if needed.
 			Serial.println(F("Use the \"d\" command to verify SdCard can be read")); // can be removed for space, if needed.
-#endif
 		}
 	}else{
 		digitalWrite(PIN_LED_OK, HIGH); // Turn on ok led
 	}
+}
+
+
+//------------------------------------------------------------------------------
+/**
+ * \brief Decode the Menu.
+ *
+ * Parses through the characters of the users input, executing corresponding
+ * MP3player library functions and features then displaying a brief menu and
+ * prompting for next input command.
+ */
+void parse_menu(byte key_command) {
+
+  uint8_t result; // result code from some function as to be tested at later time.
+
+  Serial.print(F("Received command: "));
+  Serial.write(key_command);
+  Serial.println(F(" "));
+
+  //if s, stop the playing or recording the current track
+  if(key_command == 's') {
+    if(MP3player.isPlaying()){
+	  MP3player.stopTrack();
+	  Serial.println("Player stoped.");
+	}
+	if (MP3player.isRecording()){
+	  Serial.println("Stoping recording...");
+	  MP3player.stopRecording(); // Command to finish recording.
+	  digitalWrite(PIN_LED_REC,LOW); // Turn off red led.
+	}
+	digitalWrite(PIN_AMP_SHUTDOWN, LOW); // Turn off amplifier
+  } // 's' command
+  else if(key_command == 'r'){ // If 'r', start recording.
+    Serial.println("Start recording");
+    MP3player.stopTrack(); // Stop playing if applicable.
+	digitalWrite(PIN_LED_OK, LOW); // Turn off "ready to play" Led.
+	result = MP3player.startRecordOgg(trackname); // Start recording.
+	if (result != 0){
+		Serial.print("Error starting recorder: ");
+		Serial.println(result);	
+	}
+  } // 'r' command
+  else if (key_command == 'p'){ // If 'p', play recorded track.
+    Serial.println("Restarting VS10xx...");	
+	StartMP3(); // Restart MP3 in playing mode with latest patch.
+	result = MP3player.playMP3(trackname);
+	if (result != 0){
+		Serial.print("Error playing track: ");
+		Serial.println(result);
+	}else{
+		digitalWrite(PIN_AMP_SHUTDOWN, HIGH); // Turn on amplifier
+		Serial.println("Playing...");	
+	}
+  } // 'p' command
+  else if(key_command == 'h') { // Help
+	  help();
+  }
+
+}
+
+//------------------------------------------------------------------------------
+/**
+ * \brief Print Help Menu.
+ *
+ * Prints a full menu of the commands available along with descriptions.
+ */
+void help() {
+  Serial.println("Arduino SFEMP3Shield Library OGG recorder Example:");
+  Serial.println("SFEMP3Shield by Bill Porter & Michael P. Flaga");
+  Serial.println("Recording functions by Miguel Moreto based on VLSI docs.");
+  Serial.println("COMMANDS:");
+  Serial.println(" [s] to stop recording or playing");
+  Serial.println(" [r] start recording ogg file");
+  Serial.println(" [p] play recorded track");
 }
