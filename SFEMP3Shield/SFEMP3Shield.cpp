@@ -84,7 +84,7 @@ int _st_amplitude = DEFAULT_TREBLE_AMPLITUDE;
 int _st_freqlimit = DEFAULT_TREBLE_FREQUENCY;
 
 /* 
- * Sets pointer to Recording end handler to zero. The users should
+ * Set pointer to Recording end handler to zero. The users should
  * bind their function handler using bindEndRecordHandler function.
  *
  */
@@ -360,15 +360,7 @@ uint8_t SFEMP3Shield::startRecordOgg(char* fileName, char* pluginfileName){
 
 
 /*
- * This function do the reading of OGG data from the VS1053 chip.
- * It have to be called periodically, otherwise, data will be lost
- * and the resulting OGG will be corrupted.
- *
- * Return the number of bytes written to the file or 0 if
- * recording is done.
- */
-/**
- * \brief Initialize the VS10xx for recording.
+ * \brief Read a data block from VS10xx and write it to file.
  *
  * This function do the reading of OGG data from the VS1053 chip.
  * It have to be called periodically, otherwise, data will be lost
