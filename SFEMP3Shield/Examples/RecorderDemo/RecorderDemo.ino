@@ -20,7 +20,11 @@
 #include <SdFat.h>
 #include <SdFatUtil.h>
 
+
 #include <SFEMP3Shield.h>
+
+
+#include <Bounce.h>
 
 // Pin definition:
 #define PIN_PUSH_0 5 // Pushbutton Play pin
@@ -32,6 +36,11 @@
 #define PIN_AMP_SHUTDOWN 13 // Output pin to turn amplifier module on or off.
 
 
+// bounce objects to debounce buttons.
+Bounce PushButtonRotary = Bounce(PIN_PUSH_0, 10);  // 10 ms debounce
+Bounce PushButtonStop = Bounce(PIN_PUSH_1,10);
+Bounce PushButtonRec = Bounce(PIN_PUSH_2,10);
+
 /**
  * \brief Object instancing the SdFat library.
  *
@@ -42,13 +51,29 @@ SdFat sd;
 // Objects:
 SFEMP3Shield MP3player;
 
+// Using SDFatLib, limit the filenames to 8.3 format.
 char trackname[] = "rec001.ogg";
+
+/* 
+ * Recorder plugin filename. This one is include in this demo folder.
+ * If you whant to use other profile, consult Ogg Vorbis Encoder
+ * application manual from VLSI:
+ * http://www.vlsi.fi/fileadmin/software/VS10XX/VorbisEncoder170c.pdf
+ * All the profile plugin files are stored in recorder_plugins.zip
+ * included in SFEMP3Shield library plugins folder.
+ */
+char pluginfilename[] = "e44k1q05.vs"; // HiFi Voice Profile number 5: typical 87kbps
 
 uint8_t ledstate = 0;
 
 void setup() {
 
 	Serial.begin(115200);
+
+	// Play, stop and rec buttons.
+	pinMode(PIN_PUSH_0, INPUT_PULLUP);
+	pinMode(PIN_PUSH_1, INPUT_PULLUP);
+	pinMode(PIN_PUSH_2, INPUT_PULLUP);
   
 	// Output pins:
 	pinMode(PIN_LED_OK,OUTPUT);
@@ -68,12 +93,34 @@ void setup() {
 
 	StartMP3();
 
+	// Binds a user defined function as a handler that is
+	// executed at the end of recording.
+	MP3player.bindEndRecordHandler(endRecordingHandler);
+
 	help();
 }
 
 void loop()
 {
 	uint16_t result = 0;
+
+	if (PushButtonRotary.update()) {
+		if (PushButtonRotary.fallingEdge()){
+			parse_menu('p');
+		}
+	}
+
+	if (PushButtonStop.update()) {
+		if (PushButtonStop.fallingEdge()){
+			parse_menu('s');
+		}
+	}
+
+	if (PushButtonRec.update()) {
+		if (PushButtonRec.fallingEdge()){
+			parse_menu('r');
+		}
+	}
 
 	// If recorder is active, read data blocks from VS1053b chipset and
 	// write them to track file.
@@ -84,10 +131,10 @@ void loop()
 			digitalWrite(PIN_LED_REC,ledstate); // Toogle rec led.
 		}
 		//Serial.println(result); // Print the number of databloks written.
-	}else{
-		digitalWrite(PIN_LED_REC, LOW); // Turn off rec led
-		digitalWrite(PIN_LED_OK, HIGH); // Turn on ok led
 	}
+
+	// You can do something else here.
+
 
 	if(Serial.available()) {
 		parse_menu(Serial.read()); // get command from serial input
@@ -129,6 +176,8 @@ void StartMP3(){
  */
 void parse_menu(byte key_command) {
 
+  static uint8_t gain = 0;
+
   uint8_t result; // result code from some function as to be tested at later time.
 
   Serial.print(F("Received command: "));
@@ -152,7 +201,7 @@ void parse_menu(byte key_command) {
     Serial.println("Start recording");
     MP3player.stopTrack(); // Stop playing if applicable.
 	digitalWrite(PIN_LED_OK, LOW); // Turn off "ready to play" Led.
-	result = MP3player.startRecordOgg(trackname); // Start recording.
+	result = MP3player.startRecordOgg(trackname, pluginfilename); // Start recording.
 	if (result != 0){
 		Serial.print("Error starting recorder: ");
 		Serial.println(result);	
@@ -173,7 +222,29 @@ void parse_menu(byte key_command) {
   else if(key_command == 'h') { // Help
 	  help();
   }
+  else if(key_command == 'G') { // Help
+	  if (gain < 63){
+		  if(!MP3player.setRecGain(gain++)){
+			  gain--;
+			  Serial.println("Not recording.");
+		  }else{
+			  Serial.print("Gain setted to: ");
+			  Serial.println(gain);
+		  }
+	  }
+  }
 
+  else if(key_command == 'g') { // Help
+	  if (gain > 0){
+		  if(!MP3player.setRecGain(gain--)){
+			  gain++;
+			  Serial.println("Not recording.");
+		  }else{
+			  Serial.print("Gain setted to: ");
+			  Serial.println(gain);
+		  }
+	  }
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -190,4 +261,20 @@ void help() {
   Serial.println(" [s] to stop recording or playing");
   Serial.println(" [r] start recording ogg file");
   Serial.println(" [p] play recorded track");
+  Serial.println(" [G] increase gain");
+  Serial.println(" [g] decrease gain");
+}
+
+/**
+ * \brief Function executed once the recording ends.
+ * 
+ * A pointer to this function is passed to MP3player class by using 
+ * the method bindEndRecordHandler(function);
+ */
+
+void endRecordingHandler(void) 
+{
+	Serial.println("Record finished");
+	digitalWrite(PIN_LED_REC, LOW); // Turn off rec led
+	digitalWrite(PIN_LED_OK, HIGH); // Turn on ok led
 }
