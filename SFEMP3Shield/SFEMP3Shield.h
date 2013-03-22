@@ -760,7 +760,7 @@ class SFEMP3Shield {
     int8_t getVUmeter();
     int8_t setVUmeter(int8_t);
     int16_t getVUlevel();
-	uint8_t startRecordOgg(char* fileName);
+	uint8_t startRecordOgg(char* fileName, char* pluginfileName);
 	uint16_t doRecordOgg(void);
 	void stopRecording(void);
 	uint8_t isRecording(void);

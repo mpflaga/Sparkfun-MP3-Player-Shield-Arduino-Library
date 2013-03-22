@@ -287,7 +287,7 @@ uint8_t SFEMP3Shield::vs_init() {
  * \see
  * \ref Error_Codes
  */
-uint8_t SFEMP3Shield::startRecordOgg(char* fileName){
+uint8_t SFEMP3Shield::startRecordOgg(char* fileName, char* pluginfileName){
 
 	uint8_t temp;
 
@@ -326,7 +326,8 @@ uint8_t SFEMP3Shield::startRecordOgg(char* fileName){
 	at 16MHz. With 8MHz the record is corrupted due to low writing
 	SPI speed to SD card. Maybe it is a SD issue, I do not tested
 	with a micro SD class 10, only class 4.*/
-	temp = VSLoadUserCode("e44k1q05.vs");
+	//temp = VSLoadUserCode("e44k1q05.vs");
+	temp = VSLoadUserCode(pluginfileName);
 	if(temp){
 		// Problem loading user code
 		return temp;
