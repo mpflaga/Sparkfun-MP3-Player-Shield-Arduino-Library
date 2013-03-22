@@ -663,22 +663,10 @@ extern SdFat sd;
 /* Recording definitions */
 #define VS1053_INT_ENABLE 0xC01A
 
-
 #define CHANNEL1 0x0004 // Used to set bit 3 of SCI_AICTRL3.
 #define CHANNEL2 0x0000
 
-/* Default inputs for recording are MICP and MICN as differential
- * microphone input. If you want to use LINE1 and LINE2, uncomment
- * the folowing define: */
-//#define USE_LINE1_LINE2
 //#define USE_INPUT_CHANNEL2
-
-/* left-channel input selection: */
-//#if defined(USE_LINE1_LINE2)
-//  #define INPUT_CONFIG SM_LINE1
-//#else
-//  #define INPUT_CONFIG 0
-//#endif
 
 #if defined(USE_INPUT_CHANNEL2)
 #define CHANNEL_CONFIG CHANNEL2
