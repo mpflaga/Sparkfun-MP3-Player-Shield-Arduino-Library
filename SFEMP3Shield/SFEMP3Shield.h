@@ -434,7 +434,8 @@ extern SdFat sd;
  * \brief A macro of the VS_LINE1_MODE to configure either Line level or
  * microphone input.
  *
- * Used by SFEMP3Shield::ADMixerLoad to determine if the SM_LINE1 of SCI_MODE being set as to
+ * Used by SFEMP3Shield::ADMixerLoad and SFEMP3Shield::startRecordOgg
+ * to determine if the SM_LINE1 of SCI_MODE being set as to
  * use both MICP and LINEIN1 pins as \b stereo input, at line levels.
  * Commenting it out, will result MICP and MICN used as differential input with
  * resulting \b mono signal on the left channel.
@@ -442,7 +443,8 @@ extern SdFat sd;
  * \see SM_LINE1
  */
 // configure Line1 as single ended, otherwise as differential 10x gain for microphones.
-#define VS_LINE1_MODE
+
+//#define VS_LINE1_MODE
 
 
 
@@ -662,6 +664,28 @@ extern SdFat sd;
 #define VS1053_INT_ENABLE 0xC01A
 
 
+#define CHANNEL1 0x0004 // Used to set bit 3 of SCI_AICTRL3.
+#define CHANNEL2 0x0000
+
+/* Default inputs for recording are MICP and MICN as differential
+ * microphone input. If you want to use LINE1 and LINE2, uncomment
+ * the folowing define: */
+//#define USE_LINE1_LINE2
+//#define USE_INPUT_CHANNEL2
+
+/* left-channel input selection: */
+//#if defined(USE_LINE1_LINE2)
+//  #define INPUT_CONFIG SM_LINE1
+//#else
+//  #define INPUT_CONFIG 0
+//#endif
+
+#if defined(USE_INPUT_CHANNEL2)
+#define CHANNEL_CONFIG CHANNEL2
+#else
+#define CHANNEL_CONFIG CHANNEL1
+#endif
+
 //------------------------------------------------------------------------------
 /** \name BassTreble_Group
  *  Bass and Treble group.
@@ -685,6 +709,7 @@ extern SdFat sd;
  */
 class SFEMP3Shield {
   public:
+	SFEMP3Shield(); // Constructor
     uint8_t begin();
     void end();
     uint8_t vs_init();
@@ -739,10 +764,13 @@ class SFEMP3Shield {
 	uint16_t doRecordOgg(void);
 	void stopRecording(void);
 	uint8_t isRecording(void);
+	uint8_t setRecGain(uint8_t gain);
+	void bindEndRecordHandler(void (*Handler)(void));
 
   private:
 	uint8_t StopRecFlag;
 	uint8_t RecordingFlag;
+	void (*EndRecHandlerFunc)(void);
     static SdFile track;
     static void refill();
     static void flush_cancel(flush_m);
@@ -784,10 +812,10 @@ class SFEMP3Shield {
 /** \brief contains a local value of the VSdsp's master volume Right channels*/
     uint8_t VolR;
 
-    static int _sb_amplitude;// DEFAULT_BASS_AMPLITUDE;
-    static int _sb_freqlimit;// DEFAULT_BASS_FREQUENCY;
-    static int _st_amplitude;// DEFAULT_TREBLE_AMPLITUDE;
-    static int _st_freqlimit;// DEFAULT_TREBLE_FREQUENCY;
+    int _sb_amplitude;// DEFAULT_BASS_AMPLITUDE;
+    int _sb_freqlimit;// DEFAULT_BASS_FREQUENCY;
+    int _st_amplitude;// DEFAULT_TREBLE_AMPLITUDE;
+    int _st_freqlimit;// DEFAULT_TREBLE_FREQUENCY;
 };
 
 //------------------------------------------------------------------------------

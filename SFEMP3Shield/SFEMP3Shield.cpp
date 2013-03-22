@@ -59,13 +59,6 @@ state_m  SFEMP3Shield::playing_state;
  */
 uint16_t SFEMP3Shield::spiRate;
 
-/**
- * \brief Initializar for default bass and treble settings.
- */
-int SFEMP3Shield::_sb_amplitude = DEFAULT_BASS_AMPLITUDE;
-int SFEMP3Shield::_sb_freqlimit = DEFAULT_BASS_FREQUENCY;
-int SFEMP3Shield::_st_amplitude = DEFAULT_TREBLE_AMPLITUDE;
-int SFEMP3Shield::_st_freqlimit = DEFAULT_TREBLE_FREQUENCY;
 
 // only needed for specific means of refilling
 #if defined(USE_MP3_REFILL_MEANS) && USE_MP3_REFILL_MEANS == USE_MP3_SimpleTimer
@@ -75,6 +68,31 @@ int SFEMP3Shield::_st_freqlimit = DEFAULT_TREBLE_FREQUENCY;
 
 //buffer for music
 uint8_t  SFEMP3Shield::mp3DataBuffer[32];
+
+
+//------------------------------------------------------------------------------
+/**
+ * \brief Class constructor.
+ *
+ * Initialize variables and pointers when the class is instatiated.
+ */
+SFEMP3Shield::SFEMP3Shield(){
+
+int _sb_amplitude = DEFAULT_BASS_AMPLITUDE;
+int _sb_freqlimit = DEFAULT_BASS_FREQUENCY;
+int _st_amplitude = DEFAULT_TREBLE_AMPLITUDE;
+int _st_freqlimit = DEFAULT_TREBLE_FREQUENCY;
+
+/* 
+ * Sets pointer to Recording end handler to zero. The users should
+ * bind their function handler using bindEndRecordHandler function.
+ *
+ */
+EndRecHandlerFunc = 0;
+
+RecordingFlag = 0;
+
+}
 
 //------------------------------------------------------------------------------
 /**
@@ -120,8 +138,6 @@ if (int8_t(sd.vol()->fatType()) == 0) {
   digitalWrite(MP3_RESET, LOW); //Put VS1053 into hardware reset
   
   playing_state = initialized;
-
-  RecordingFlag = 0;
 
   uint8_t result = vs_init();
   if(result) {
@@ -316,10 +332,14 @@ uint8_t SFEMP3Shield::startRecordOgg(char* fileName){
 		return temp;
 	}
 
+#if defined(VS_LINE1_MODE)
+	Mp3WriteRegister(SCI_MODE, SM_ADPCM | SM_SDINEW | SM_LINE1);
+#else
 	Mp3WriteRegister(SCI_MODE, SM_ADPCM | SM_SDINEW);
+#endif
 	Mp3WriteRegister(SCI_AICTRL1, 1024); //AGC
 	Mp3WriteRegister(SCI_AICTRL2, 0);
-	Mp3WriteRegister(SCI_AICTRL3, 0);
+	Mp3WriteRegister(SCI_AICTRL3, 0x0004);//CHANNEL_CONFIG);
 
 	/* Open file for writing */
 	if(!track.open(fileName, O_WRITE | O_CREAT)){
@@ -438,7 +458,12 @@ uint16_t SFEMP3Shield::doRecordOgg(void){
 				state = 0;
 				RecordingFlag = 0;
 				track.close();
+				if(EndRecHandlerFunc !=0 )  {
+					EndRecHandlerFunc(); // Executes the handler function passed as a pointer.
+											// only if user binded a function.
+				}
 				Mp3WriteRegister(SCI_MODE, SM_SDINEW | SM_RESET);
+				return 0;
 			} /* if (wordsToRead < 256) */
 		} /* while (wordsWaiting >= ((state < 2) ? 256 : 1)) */
 	} // End if RecordingFlag
@@ -464,14 +489,62 @@ uint8_t SFEMP3Shield::isRecording(void){
  * \brief Request to stop recording.
  *
  * This function signals doRecordOgg to stop recording.
- * Method writen by Miguel Moreto based on VS1053b Ogg Vorbis Encoder
- * application manual.
+ * Method writen by Miguel Moreto.
  *
  * \note The user needs to call stopRecording in order to finish
  * the recording and close the OGG track file. 
  */
 void SFEMP3Shield::stopRecording(void){
 	StopRecFlag = 1;
+}
+
+/**
+ * \brief Set the recording gain value.
+ *
+ * This function writes a multiple of 1024 to
+ * SCI_AICTRL1 Recording gain (1024 = 1) or 0 for automatic gain control
+ * Setting the gain to zero enables AGC.
+ * Method writen by Miguel Moreto.
+ *
+ * \param[in] gain, number from 0 to 63.
+ *
+ * \return 0 if it is not recording, 1 if success.
+ *
+ * \note Maximun gain is (65536/1024)-1 = 63. 
+ */
+uint8_t SFEMP3Shield::setRecGain(uint8_t gain){
+	if (isRecording()){
+		if (gain > 63){
+			gain = 63;
+		}
+		
+		if (gain == 0){ // If AGC, sets a Maximum autogain amplification.
+			Mp3WriteRegister(SCI_AICTRL2, 1024);
+		}
+		
+		Mp3WriteRegister(SCI_AICTRL1, ((gain << 10)));
+		return 1;
+	}
+	return 0;
+}
+
+/**
+ * \brief Attach a handler function
+ *
+ * The pointer to a function (EndRecHandlerFunc) is assigned with
+ * the address of a function defined by the user (Handler).
+ * This Handler is executed at the end of doRecordOgg() after
+ * the last word wrote to ogg file.
+ * This way the user can define what to do just after recording ends.
+ * You can view this like an interrupt handler that is fired once the
+ * recording ends.
+ * Method writen by Miguel Moreto.
+ *
+ * \note The user should call this function at the beggining
+ * of the program. 
+ */
+void SFEMP3Shield::bindEndRecordHandler(void (*Handler)(void)){
+	EndRecHandlerFunc = Handler;
 }
 
 //------------------------------------------------------------------------------
