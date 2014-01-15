@@ -663,10 +663,10 @@ extern SdFat sd;
 /* Recording definitions */
 #define VS1053_INT_ENABLE 0xC01A
 
-#define CHANNEL1 0x0004 // Used to set bit 3 of SCI_AICTRL3.
+#define CHANNEL1 0x0008 // Used to set bit 3 of SCI_AICTRL3.
 #define CHANNEL2 0x0000
 
-//#define USE_INPUT_CHANNEL2
+#define USE_INPUT_CHANNEL2
 
 #if defined(USE_INPUT_CHANNEL2)
 #define CHANNEL_CONFIG CHANNEL2

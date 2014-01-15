@@ -340,7 +340,7 @@ uint8_t SFEMP3Shield::startRecordOgg(char* fileName, char* pluginfileName){
 #endif
 	Mp3WriteRegister(SCI_AICTRL1, 1024); //AGC
 	Mp3WriteRegister(SCI_AICTRL2, 0);
-	Mp3WriteRegister(SCI_AICTRL3, 0x0004);//CHANNEL_CONFIG);
+	Mp3WriteRegister(SCI_AICTRL3, CHANNEL_CONFIG);//CHANNEL_CONFIG);
 
 	/* Open file for writing */
 	if(!track.open(fileName, O_WRITE | O_CREAT)){
